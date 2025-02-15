@@ -1,0 +1,77 @@
+## template: jinja
+#cloud-config
+
+# User defined configurations
+{% set custom_ssh_key = "" %}
+{% set custom_ssh_import_id = "" %}
+{% set custom_password = "ubuntu" %}
+{% set custom_pro_token = "" %}
+
+# Set the correct Datasource depending on the cloud
+{% if cloud_name == "lxd" %}
+  {% set meta = {} %}
+  {% for key, value in ds.config.items() %}
+    {% if key.startswith("user_") %}
+      {% set _ = meta.__setitem__(key[5:], value) %}
+    {% endif %}
+  {% endfor %}
+{% else %}
+  {% set meta = ds.meta_data.get("meta") if ds.meta_data.get("meta") else {} %}
+{% endif %}
+
+# Use the cloud provided config, otherwise use the custom variables set at the top of this template
+{% set ssh_key = meta.get("ssh_key") or custom_ssh_key %}
+{% set ssh_import_id = meta.get("ssh_import_id") or custom_ssh_import_id %}
+{% set password = meta.get("password") or custom_password %}
+{% set pro_token = meta.get("pro_token") or custom_pro_token %}
+
+power_state:
+  delay: 1
+  mode: reboot
+  message: Rebooting machine
+  condition: true
+
+# No custom_packages are defined, because you should simply edit the template to add what you want
+package_update: true
+package_upgrade: true
+packages:
+  - mosh
+  - nmap
+  - socat
+
+snap:
+  commands:
+    - snap install yq
+
+{% if pro_token %}
+ubuntu_pro:
+  token: {{ pro_token }}
+{% endif %}
+
+{% if not ssh_key and not ssh_import_id %}
+ssh_pwauth: true
+{% endif %}
+
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+{% if not ssh_key and not ssh_import_id %}
+    plain_text_passwd: "{{ password }}"
+    lock_passwd: false
+{% endif %}
+{% if ssh_key %}
+    ssh_authorized_keys:
+      - {{ ssh_key }}
+{% endif %}
+{% if ssh_import_id %}
+    ssh_import_id:
+      - {{ ssh_import_id }}
+{% endif %}
+
+write_files:
+  - path: /usr/local/bin/jq
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      yq -p json -o json "${@}"
