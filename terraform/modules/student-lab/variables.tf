@@ -45,11 +45,11 @@ variable "limits" {
   default = null
 }
 
+
 variable "students" {
-  description = "A list of students, and their specific information"
-  type = list(object({
+  description = "A map of students where the username is the key and is unique"
+  type = map(object({
     name = string
-    username = string
     ssh_key = string
     ssh_import_id = string
     password = string
@@ -62,5 +62,5 @@ variable "students" {
       disk = optional(string)
     }))
   }))
-  default = null
+  default = {}
 }
