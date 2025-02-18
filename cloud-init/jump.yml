@@ -38,6 +38,7 @@ packages:
   - mosh
   - nmap
   - socat
+  - wireshark
 
 snap:
   commands:

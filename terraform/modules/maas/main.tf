@@ -9,7 +9,7 @@ terraform {
 
 provider "maas" {
   api_version = "2.0"
-  api_key     = file("../../secrets/maas-token")
+  api_key     = file("../../../secrets/maas-token")
   api_url     = var.maas_url
 }
 
@@ -66,7 +66,7 @@ resource "maas_instance" "mini_pcs" {
   }
   deploy_params {
     distro_series = "jammy"
-    user_data = file("../../cloud-init/microcloud.yml")
+    user_data = file("../../../cloud-init/microcloud.yml")
   }
   timeouts {
     create = "30m"
