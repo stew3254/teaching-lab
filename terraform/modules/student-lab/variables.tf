@@ -30,23 +30,37 @@ variable "images" {
   default = []
 }
 
-
-variable "ssh_key" {
-  type = string
-  default = ""
+variable "limits" {
+  description = "Default resource limits for student projects"
+  type = object({
+    containers = optional(number)
+    vms = optional(number)
+    cores = number
+    memory = string
+    disk = string
+    ips = optional(string)
+    nics = optional(string)
+    projects = optional(list(string))
+  })
+  default = null
 }
 
-variable "ssh_import_id" {
-  type = string
-  default = ""
-}
-
-variable "password" {
-  type = string
-  default = "ubuntu"
-}
-
-variable "pro_token" {
-  type = string
-  default = ""
+variable "students" {
+  description = "A list of students, and their specific information"
+  type = list(object({
+    name = string
+    username = string
+    ssh_key = string
+    ssh_import_id = string
+    password = string
+    ips = string
+    limits = optional(object({
+      containers = optional(number)
+      vms = optional(number)
+      cores = optional(number)
+      memory = optional(string)
+      disk = optional(string)
+    }))
+  }))
+  default = null
 }

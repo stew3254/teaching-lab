@@ -2,3 +2,5 @@ terraform/**/*terraform*
 .idea/
 secrets/
 .env
+*.tfvars
+!terraform/global.auto.tfvars

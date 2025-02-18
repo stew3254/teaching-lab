@@ -51,10 +51,8 @@ module "student-lab" {
   images = lxd_cached_image.images
   remote_name = var.remote_name
   public_network = lxd_network.public
-  ssh_key = var.ssh_key
-  ssh_import_id = var.ssh_import_id
-  password = var.password
-  pro_token = var.pro_token
+  limits = var.limits
+  students = var.students
 }
 
 module "soc-lab" {
