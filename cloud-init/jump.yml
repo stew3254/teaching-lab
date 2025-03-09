@@ -3,7 +3,6 @@
 
 # User defined configurations
 {% set custom_ssh_key = "" %}
-{% set custom_ssh_import_id = "" %}
 {% set custom_password = "ubuntu" %}
 {% set custom_pro_token = "" %}
 
@@ -21,7 +20,6 @@
 
 # Use the cloud provided config, otherwise use the custom variables set at the top of this template
 {% set ssh_key = meta.get("ssh_key") or custom_ssh_key %}
-{% set ssh_import_id = meta.get("ssh_import_id") or custom_ssh_import_id %}
 {% set password = meta.get("password") or custom_password %}
 {% set pro_token = meta.get("pro_token") or custom_pro_token %}
 
@@ -49,7 +47,7 @@ ubuntu_pro:
   token: {{ pro_token }}
 {% endif %}
 
-{% if not ssh_key and not ssh_import_id %}
+{% if not ssh_key %}
 ssh_pwauth: true
 {% endif %}
 
@@ -64,10 +62,6 @@ users:
 {% if ssh_key %}
     ssh_authorized_keys:
       - {{ ssh_key }}
-{% endif %}
-{% if ssh_import_id %}
-    ssh_import_id:
-      - {{ ssh_import_id }}
 {% endif %}
 
 write_files:
