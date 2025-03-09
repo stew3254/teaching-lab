@@ -36,23 +36,21 @@ variable "limits" {
     memory = string
     disk = string
     ips = optional(string)
-    nics = optional(string)
     projects = optional(list(string))
   })
   default = {
     cores = 8
     memory = "24GiB"
     disk = "80GiB"
-    nics = "UPLINK public"
   }
 }
 
 variable "students" {
-  description = "A map of students where the username is the key and is unique"
+  description = "A map of students"
   type = map(object({
     name = string
+    username = string
     ssh_key = string
-    ssh_import_id = string
     password = string
     ips = string
     limits = optional(object({

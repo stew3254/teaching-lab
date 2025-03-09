@@ -15,12 +15,11 @@ resource "lxd_project" "student" {
   description = "${each.value.name}'s Lab"
   config = {
     "features.profiles" = true
-    # "features.networks" = true
-    "features.networks" = false
+    "features.networks" = true
     "features.networks.zones" = true
     "features.images" = false
     "features.storage.buckets" = false
-    "features.storage.volumes" = false
+    "features.storage.volumes" = true
 
     # Add restrictions. More information here https://documentation.ubuntu.com/lxd/en/latest/reference/projects
     "restricted" = true
@@ -29,24 +28,25 @@ resource "lxd_project" "student" {
     # "restricted.devices.nic" = "managed"
     "restricted.devices.nic" = "allow"
     # "restricted.networks.access" = "${var.limits.nics} ${substr(each.value.username, 0, 11)}-net"
-    "restricted.networks.subnets" = each.value.ips
+    # "restricted.networks.subnets" = each.value.ips
     "restricted.networks.uplinks" = "UPLINK"
     "restricted.snapshots" = "allow"
+    "restricted.virtual-machines.lowlevel" = "allow"
 
     "limits.virtual-machines" = var.limits.vms
     "limits.containers" = var.limits.containers
     "limits.cpu" = var.limits.cores
     "limits.memory" = var.limits.memory
     "limits.disk" = var.limits.disk
-    "limits.networks" = 2
+    "limits.networks" = 4
   }
 }
 
 # Only allow ssh into the instance
 resource "lxd_network_acl" "jump_acl" {
-  # count = length(var.students)
+  for_each = var.students
   name = "jump-acl"
-  # project = lxd_project.student[count.index].name
+  project = lxd_project.student[each.key].name
 
   egress = [
     {
@@ -68,11 +68,11 @@ resource "lxd_network_acl" "jump_acl" {
   ]
 }
 
-# Public network
+# Create the student's network
 resource "lxd_network" "student" {
   for_each = var.students
   # Set a short network name
-  name = "${substr(each.key, 0, 11)}-net"
+  name = "${substr(each.value.username, 0, 11)}-net"
   project = lxd_project.student[each.key].name
   type = "ovn"
   config = {
@@ -86,14 +86,14 @@ resource "lxd_network" "student" {
     # Students are able to change these ACLs.
     # If you want to enforce them, you must do it from outside of OVN
     # "security.acls" = lxd_network_acl.jump_acl[count.index].name
-    "security.acls" = lxd_network_acl.jump_acl.name
+    "security.acls" = lxd_network_acl.jump_acl[each.key].name
   }
 }
 
 # Default profile to use since "default" can't be used
 resource "lxd_profile" "default" {
   for_each = var.students
-  name = "def"
+  name = "default"
   project = lxd_project.student[each.key].name
   description = "Default LXD Profile"
 
@@ -123,16 +123,16 @@ resource "lxd_profile" "default" {
 }
 
 # Write the LXD profile Terraform manages into the default so we don't need to use the other name
-data "external" "copy_default" {
-  for_each = var.students
-  program = ["${path.root}/../scripts/set_default_profile.sh"]
-
-  query = {
-    "remote" = var.remote_name
-    "profile" = "def"
-    "project" = lxd_project.student[each.key].name
-  }
-}
+# data "external" "copy_default" {
+#   for_each = var.students
+#   program = ["${path.root}/../scripts/set_default_profile.sh"]
+#
+#   query = {
+#     "remote" = var.remote_name
+#     "profile" = "def"
+#     "project" = lxd_project.student[each.key].name
+#   }
+# }
 
 resource "lxd_profile" "vm" {
   for_each = var.students
@@ -198,11 +198,15 @@ resource "lxd_profile" "kali" {
   for_each = var.students
   name = "kali"
   project = lxd_project.student[each.key].name
-  description = "Ideal for Kali Linux"
+  description = "Used for Kali Linux Desktop"
 
   config = {
-    "limits.cpu" = 4
-    "limits.memory" = "8GiB"
+    "security.secureboot" = false
+    "limits.cpu" = 2
+    "limits.memory" = "4GiB"
+    "cloud-init.vendor-data" = file("${path.root}/../cloud-init/kali-desktop.yml")
+    "user.ssh_key" = each.value.ssh_key == "" ? null : (endswith(each.value.ssh_key, ".pub") ? trimsuffix(file(each.value.ssh_key), "\n") : trimsuffix(file(format("%s.pub", each.value.ssh_key)), "\n"))
+    "user.password" = each.value.password
   }
 
   device {
@@ -234,16 +238,16 @@ resource "lxd_profile" "jump" {
   config = {
     "cloud-init.user-data" = file("${path.root}/../cloud-init/jump.yml")
     "user.ssh_key" = each.value.ssh_key == "" ? null : (endswith(each.value.ssh_key, ".pub") ? trimsuffix(file(each.value.ssh_key), "\n") : trimsuffix(file(format("%s.pub", each.value.ssh_key)), "\n"))
-    "user.ssh_import_id" = each.value.ssh_import_id == "" ? null : each.value.ssh_import_id
     "user.password" = each.value.password
   }
 }
 
 resource "lxd_instance" "jump" {
   for_each = var.students
-  image = "n"
-  name  = "jump"
-  profiles = [lxd_profile.default[each.key].name, lxd_profile.jump[each.key].name]
+  image = "kv"
+  name  = "kali"
+  type = "virtual-machine"
+  profiles = [lxd_profile.default[each.key].name, lxd_profile.kali[each.key].name]
   project = lxd_project.student[each.key].name
 
   device {
