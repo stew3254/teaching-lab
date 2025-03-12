@@ -92,6 +92,21 @@ write_files:
           Modes "1920x1080_60.00"
         EndSubSection
       EndSection
+  - path: /var/tmp/rustdesk-additional-settings.toml
+    permissions: '0600'
+    content: |
+      allow-linux-headless = 'Y'
+      verification-method = 'use-permanent-password'
+      approve-mode = 'password'
+      direct-server = 'Y'
+      allow-remote-config-modification = 'Y'
 runcmd:
   - wget https://github.com/rustdesk/rustdesk/releases/download/1.3.8/rustdesk-1.3.8-x86_64.deb -O /var/tmp/rustdesk.deb
   - apt-get install -y /var/tmp/rustdesk.deb
+  - systemctl enable --now rustdesk
+  - sleep 5
+  - cat /var/tmp/rustdesk-additional-settings.toml | tee -a /home/kail/.config/rustdesk/RustDesk2.toml
+  - rustdesk --get-id | tee /home/kali/rustdesk-id.txt
+  - chown 600 /home/kali/rustdesk-id.txt
+  - rustdesk --password '{{ password }}'
+  - systemctl restart rustdesk
