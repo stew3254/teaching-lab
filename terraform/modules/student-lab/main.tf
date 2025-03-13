@@ -31,7 +31,7 @@ resource "lxd_project" "student" {
     # "restricted.networks.subnets" = each.value.ips
     "restricted.networks.uplinks" = "UPLINK"
     "restricted.snapshots" = "allow"
-    "restricted.virtual-machines.lowlevel" = "allow"
+    # "restricted.virtual-machines.lowlevel" = "allow"
 
     "limits.virtual-machines" = var.limits.vms
     "limits.containers" = var.limits.containers
@@ -56,15 +56,16 @@ resource "lxd_network_acl" "jump_acl" {
     },
   ]
 
-  ingress = [
-    {
-      description      = "Accept SSH"
-      action           = "allow"
-      source           = "@external"
-      destination_port = "22"
-      protocol         = "tcp"
-      state            = "enabled"
-    }
+  ingress = length(each.value.ports) == 0 ? null : [
+    for i in each.value.ports:
+      {
+        description      = i.description
+        action           = "allow"
+        source           = "@external"
+        destination_port = i.listen_port
+        protocol         = i.protocol
+        state            = "enabled"
+      }
   ]
 }
 
@@ -81,7 +82,7 @@ resource "lxd_network" "student" {
     "ipv4.address" = "192.168.10.1/24"
     "ipv4.dhcp" = true
     "ipv4.nat" = true
-    "dns.domain" = "student.example.com"
+    "dns.domain" = "~student.example.com"
     "ipv6.address" = "none"
     # Students are able to change these ACLs.
     # If you want to enforce them, you must do it from outside of OVN
@@ -90,7 +91,7 @@ resource "lxd_network" "student" {
   }
 }
 
-# Default profile to use since "default" can't be used
+# Default profile
 resource "lxd_profile" "default" {
   for_each = var.students
   name = "default"
@@ -100,7 +101,7 @@ resource "lxd_profile" "default" {
   # Limit the amount of resources used so that one container doesn't impact others
   config = {
     "limits.cpu" = 1
-    "limits.memory" = "2GiB"
+    "limits.memory" = "1GiB"
   }
 
   device {
@@ -122,23 +123,41 @@ resource "lxd_profile" "default" {
   }
 }
 
-# Write the LXD profile Terraform manages into the default so we don't need to use the other name
-# data "external" "copy_default" {
-#   for_each = var.students
-#   program = ["${path.root}/../scripts/set_default_profile.sh"]
-#
-#   query = {
-#     "remote" = var.remote_name
-#     "profile" = "def"
-#     "project" = lxd_project.student[each.key].name
-#   }
-# }
-
 resource "lxd_profile" "vm" {
   for_each = var.students
   name = "vm"
   project = lxd_project.student[each.key].name
   description = "Ideal for Linux Server VMs"
+
+  config = {
+    "limits.cpu" = 2
+    "limits.memory" = "2GiB"
+  }
+
+  device {
+    name = "eth0"
+    type = "nic"
+    properties = {
+      network = lxd_network.student[each.key].name
+    }
+  }
+
+  device {
+    name = "root"
+    type = "disk"
+    properties = {
+      path = "/"
+      size = "10GiB"
+      pool = "remote"
+    }
+  }
+}
+
+resource "lxd_profile" "desktop" {
+  for_each = var.students
+  name = "desktop"
+  project = lxd_project.student[each.key].name
+  description = "Ideal for Linux Desktop VMs"
 
   config = {
     "limits.cpu" = 2
@@ -164,33 +183,15 @@ resource "lxd_profile" "vm" {
   }
 }
 
-resource "lxd_profile" "desktop" {
+# Create a volume for the student's home directory.
+# This allows us to keep their files in case the kali VM breaks
+resource "lxd_volume" "home" {
   for_each = var.students
-  name = "desktop"
+  name = "home"
   project = lxd_project.student[each.key].name
-  description = "Ideal for Linux Desktop VMs"
-
+  pool = "remote-fs"
   config = {
-    "limits.cpu" = 4
-    "limits.memory" = "6GiB"
-  }
-
-  device {
-    name = "eth0"
-    type = "nic"
-    properties = {
-      network = lxd_network.student[each.key].name
-    }
-  }
-
-  device {
-    name = "root"
-    type = "disk"
-    properties = {
-      path = "/"
-      size = "20GiB"
-      pool = "remote"
-    }
+    size = "10GiB"
   }
 }
 
@@ -203,10 +204,12 @@ resource "lxd_profile" "kali" {
   config = {
     "security.secureboot" = false
     "limits.cpu" = 2
-    "limits.memory" = "4GiB"
-    "cloud-init.vendor-data" = file("${path.root}/../cloud-init/kali-desktop.yml")
-    "user.ssh_key" = each.value.ssh_key == "" ? null : (endswith(each.value.ssh_key, ".pub") ? trimsuffix(file(each.value.ssh_key), "\n") : trimsuffix(file(format("%s.pub", each.value.ssh_key)), "\n"))
+    "limits.memory" = "6GiB"
+    "cloud-init.user-data" = file("${path.root}/../cloud-init/kali-desktop.yml")
+    "user.username" = each.value.username
+    "user.ssh_key" = endswith(each.value.ssh_key, ".pub") ? trimsuffix(file(each.value.ssh_key), "\n") : trimsuffix(file("${each.value.ssh_key}.pub"), "\n")
     "user.password" = each.value.password
+    "user.public_network" = each.value.join_public_network ? var.public_network : null
   }
 
   device {
@@ -228,21 +231,7 @@ resource "lxd_profile" "kali" {
   }
 }
 
-resource "lxd_profile" "jump" {
-  for_each = var.students
-  name = "jump"
-  project = lxd_project.student[each.key].name
-  description = "A profile to create a jump host"
-
-  # Limit the amount of resources used so that one container doesn't impact others
-  config = {
-    "cloud-init.user-data" = file("${path.root}/../cloud-init/jump.yml")
-    "user.ssh_key" = each.value.ssh_key == "" ? null : (endswith(each.value.ssh_key, ".pub") ? trimsuffix(file(each.value.ssh_key), "\n") : trimsuffix(file(format("%s.pub", each.value.ssh_key)), "\n"))
-    "user.password" = each.value.password
-  }
-}
-
-resource "lxd_instance" "jump" {
+resource "lxd_instance" "kali" {
   for_each = var.students
   image = "kv"
   name  = "kali"
@@ -259,6 +248,16 @@ resource "lxd_instance" "jump" {
     }
   }
 
+  device {
+    name = "home"
+    type = "disk"
+    properties = {
+      path = "/home"
+      source = lxd_volume.home[each.key].name
+      pool = "remote-fs"
+    }
+  }
+
   timeouts = {
     create = "60m"
   }
@@ -272,17 +271,36 @@ resource "lxd_instance" "jump" {
       fail_on_error = true
     }
   }
-
-  depends_on = [var.images]
 }
+
+# Snapshot the machine once it's been created in case we need to go back to it
+# This will save us from having to recreate the machine in most cases
+resource "lxd_snapshot" "kali_machine" {
+  for_each = var.students
+  name     = "base"
+  project = lxd_project.student[each.key].name
+  instance = lxd_instance.kali[each.key].name
+  stateful = false
+}
+
+# Currently cannot snapshot volumes. Disable snapshots for now
+# resource "lxd_snapshot" "kali_home" {
+#   for_each = var.students
+#   name     = "base"
+#   project = lxd_project.student[each.key].name
+#   # instance = lxd_volume.home[each.key].name
+#   instance = "test"
+#   stateful = false
+# }
 
 # Assign a 'floating ip' to the jump host
 resource "lxd_network_forward" "jump_forward" {
   for_each = var.students
   project = lxd_project.student[each.key].name
   network = lxd_network.student[each.key].name
-  listen_address = split(":", split("/", each.value.ips)[0])[1]
+  listen_address = each.value.ip
   config = {
-    target_address = lxd_instance.jump[each.key].ipv4_address
+    target_address = length(each.value.ports) > 0 ? null : lxd_instance.kali[each.key].ipv4_address
   }
+  ports = length(each.value.ports) > 0 ? each.value.ports : null
 }

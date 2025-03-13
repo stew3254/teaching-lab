@@ -15,22 +15,6 @@ provider "lxd" {
   }
 }
 
-# Public network
-resource "lxd_network" "public" {
-  name = "public"
-  # description = "A public network with open firewall rules"
-  type = "ovn"
-  config = {
-    "bridge.mtu" = 1442
-    "network" = "UPLINK"
-    "ipv4.address" = "172.19.0.1/16"
-    "ipv4.dhcp" = true
-    "ipv4.nat" = true
-    "dns.domain" = "public.example.com"
-    "ipv6.address" = "none"
-  }
-}
-
 # Cache common images from the Remote
 resource "lxd_cached_image" "images" {
   count = length(var.images)
@@ -50,7 +34,7 @@ module "student-lab" {
   source = "./modules/student-lab"
   images = lxd_cached_image.images
   remote_name = var.remote_name
-  public_network = lxd_network.public
+  public_network = var.public_network
   limits = var.limits
   students = var.students
 }

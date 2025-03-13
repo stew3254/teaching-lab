@@ -16,11 +16,10 @@ variable "remote_name" {
   default = null
 }
 
-# Accept LXD network resource
 variable "public_network" {
-  type = object({})
-  description = "The public network"
-  default = {}
+  type = string
+  description = "The ZeroTier public network id"
+  default = null
 }
 
 # Accept LXD images resource
@@ -52,7 +51,15 @@ variable "students" {
     username = string
     ssh_key = string
     password = string
-    ips = string
+    join_public_network = bool
+    ip = string
+    ports = list(object({
+      description = string
+      protocol = string
+      listen_port = string
+      target_port = string
+      target_address = string
+    }))
     limits = optional(object({
       containers = optional(number)
       vms = optional(number)

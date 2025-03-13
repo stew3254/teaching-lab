@@ -2,8 +2,10 @@
 #cloud-config
 
 # User defined configurations
+{% set custom_username = "kali" %}
 {% set custom_ssh_key = "" %}
 {% set custom_password = "kali" %}
+{% set custom_public_network = "" %}
 
 # Set the correct Datasource depending on the cloud
 {% if cloud_name == "lxd" %}
@@ -18,39 +20,41 @@
 {% endif %}
 
 # Use the cloud provided config, otherwise use the custom variables set at the top of this template
+{% set username = meta.get("username") or custom_username %}
 {% set ssh_key = meta.get("ssh_key") or custom_ssh_key %}
 {% set password = meta.get("password") or custom_password %}
+{% set public_network = meta.get("public_network") or custom_public_network %}
 
 # Update
-#power_state:
-#  delay: 1
-#  mode: reboot
-#  message: Rebooting machine
-#  condition: true
+power_state:
+  delay: 1
+  mode: reboot
+  message: Rebooting machine
+  condition: true
 
 # No custom_packages are defined, because you should simply edit the template to add what you want
 package_update: true
 package_upgrade: true
-package_reboot_if_required: true
 packages:
   - kali-linux-default
   - kali-desktop-xfce
   - btop
   - xserver-xorg-video-dummy
 
-{% if ssh_key %}
-ssh_authorized_keys:
-  - {{ ssh_key }}
-{% endif %}
-password: {{ password }}
-chpasswd:
-  expire: false
+users:
+  - name: {{ username }}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /usr/bin/zsh
+    plain_text_passwd: '{{ password }}'
+    lock_passwd: false
+    ssh_authorized_keys:
+      - {{ ssh_key }}
 
 write_files:
   - path: /root/.hushlogin
     defer: true
     permissions: '0400'
-  - path: /home/kali/.hushlogin
+  - path: /home/{{ username }}/.hushlogin
     defer: true
     permissions: '0400'
   - path: /etc/lightdm/lightdm.conf.d/99_kali_override.conf
@@ -61,7 +65,7 @@ write_files:
       logind-check-graphical=false
       
       [SeatDefaults]
-      autologin-user=kali
+      autologin-user={{ username }}
       autologin-user-timeout=0
   - path: /usr/share/X11/xorg.conf.d/99_rustdesk.conf.disabled
     defer: true
@@ -92,7 +96,8 @@ write_files:
           Modes "1920x1080_60.00"
         EndSubSection
       EndSection
-  - path: /var/tmp/rustdesk-additional-settings.toml
+  - path: /home/{{ username }}/rustdesk-additional-settings.toml
+    defer: true
     permissions: '0600'
     content: |
       allow-linux-headless = 'Y'
@@ -101,12 +106,11 @@ write_files:
       direct-server = 'Y'
       allow-remote-config-modification = 'Y'
 runcmd:
+  - sudo -u {{ username }} git clone https://github.com/stew3254/teaching-lab-docs.git /home/{{ username }}/lab-docs
   - wget https://github.com/rustdesk/rustdesk/releases/download/1.3.8/rustdesk-1.3.8-x86_64.deb -O /var/tmp/rustdesk.deb
   - apt-get install -y /var/tmp/rustdesk.deb
   - systemctl enable --now rustdesk
-  - sleep 5
-  - cat /var/tmp/rustdesk-additional-settings.toml | tee -a /home/kail/.config/rustdesk/RustDesk2.toml
-  - rustdesk --get-id | tee /home/kali/rustdesk-id.txt
-  - chown 600 /home/kali/rustdesk-id.txt
-  - rustdesk --password '{{ password }}'
-  - systemctl restart rustdesk
+  - curl -s https://install.zerotier.com | bash
+{% if public_network %}
+  - zerotier-cli join '{{ public_network }}'
+{% endif %}

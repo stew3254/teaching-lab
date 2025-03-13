@@ -16,6 +16,12 @@ variable "remote_addr" {
   default = null
 }
 
+variable "public_network" {
+  type = string
+  description = "The ZeroTier public network id"
+  default = null
+}
+
 variable "images" {
   description = "The images that will be cached on the server for quick access"
   type = list(object({
@@ -41,7 +47,7 @@ variable "limits" {
   default = {
     cores = 8
     memory = "24GiB"
-    disk = "80GiB"
+    disk = "100GiB"
   }
 }
 
@@ -52,7 +58,15 @@ variable "students" {
     username = string
     ssh_key = string
     password = string
-    ips = string
+    join_public_network = bool
+    ip = string
+    ports = list(object({
+      description = string
+      protocol = string
+      listen_port = string
+      target_port = string
+      target_address = string
+    }))
     limits = optional(object({
       containers = optional(number)
       vms = optional(number)
