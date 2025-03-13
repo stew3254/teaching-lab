@@ -46,7 +46,7 @@ variable "limits" {
   })
   default = {
     cores = 8
-    memory = "24GiB"
+    memory = "16GiB"
     disk = "100GiB"
   }
 }

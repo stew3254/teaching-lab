@@ -12,3 +12,9 @@ images = [
 enabled_labs = [
   "student-lab"
 ]
+
+limits = {
+  cores = 8
+  memory = "16GiB"
+  disk = "100GiB"
+}
